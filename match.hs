@@ -19,26 +19,20 @@ getUsefulLines :: [String] -> [String]
 getUsefulLines = filter (=~ "#[0-9]+") . filter (=~ "LTPROBE")
 
 extractEvents :: [String] -> [Event]
-extractEvents =
-  let
+extractEvents = map extractEvent
+  where
     extractId       = read . tail . (=~ "#[0-9]+")
     extractName     = tail . tail . (=~ ": [a-zA-Z]+")
     extractStatus l = if l =~ "Starting" then Started else Stopped
     extractEvent l  = Event{taskId=extractId l, taskName=extractName l, taskStatus=extractStatus l}
-  in
-   map extractEvent
    
 getUnfinished :: [Event] -> [Event]
-getUnfinished =
-  let
+getUnfinished = fst . unfinishedAndFinished
+  where
     unfinishedAndFinished = foldl matchEvents ([], [])
     matchEvents (started, finished) event
       | taskStatus event == Started = (event:started, finished)
-      | taskStatus event == Stopped = (delete Event{taskId=taskId event,
-                                                    taskName=taskName event,
-                                                    taskStatus=Started} started, event:finished)
-  in
-   fst . unfinishedAndFinished
+      | taskStatus event == Stopped = (delete event{taskStatus=Started} started, event:finished)
 
 pipeline :: [String] -> [String]
 pipeline = map show . getUnfinished . extractEvents . getUsefulLines
