@@ -11,14 +11,29 @@ import Network.HTTP.Conduit
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as BLC
 import qualified Data.Word8 as W
+import Web.Authenticate.OAuth
+import Control.Monad.Trans.Control (MonadBaseControl)
+import Data.ConfigFile
+import Data.Either.Utils (forceEither)
 
-main :: IO()
+main :: IO ()
 main = do
-  request <- parseUrl "http://www.twitter.com/"
+  conf <- readfile emptyCP "twitter.cfg"
+  let cp = forceEither $ conf
+  let oauthConsumerKey = BLC.pack $ forceEither $ get cp "oauth" "consumerkey"
+  let oauthConsumerSecret = BLC.pack $ forceEither $ get cp "oauth" "consumersecret"
+  let oauthAccessToken = BLC.pack $ forceEither $ get cp "oauth" "accesstoken"
+  let oauthAccessTokenSecret = BLC.pack $ forceEither $ get cp "oauth" "accesstokensecret"
+  let oauth      = newOAuth { oauthConsumerKey = oauthConsumerKey,
+                              oauthConsumerSecret = oauthConsumerSecret }
+  let credential = newCredential oauthAccessToken oauthAccessTokenSecret
   withManager $ \manager -> do
-    Response _ _ _ src <- http request manager
+    request <- parseUrl "http://www.twitter.com/"
+    signedRequest <- signOAuth oauth credential request
+    Response _ _ _ src <- http signedRequest manager
     -- $$+- instead of $$ because 'src' is a ResumableSource (as per Conduit.hs)
     src C.$$+- conduit C.=$ sinkHandle stdout
-      where
-        conduit = CL.map $ B.map W.toUpper
+  where
+    conduit    = CL.map $ B.map W.toUpper
